@@ -1,0 +1,38 @@
+SEMAPHORES:
+  - vehicle_transaction = 0
+  - inbound_vehicle = 1
+  - outbound_vehicle = 1
+  - station_manager_inbound_notification = 0
+  - station_manager_outbound_notification = 0
+  - ledger_read = 1
+  - ledger_write = 1
+  - ledger_mutex = 1
+
+VARIABLES:
+  * ledger specific:
+    # global status (in comptroller's memory, all those lines for each bus are kept in a dynamic structure and in the shared memory, only the last one is kept):
+      - arrival_time : double
+      - arrival_bus_plate_number(id) : string(8)
+      - arrival_bus_category : string(3)
+      - arrival_final_bay : int(1 = ASK,2 = PEL,3 = VOR)
+      - arrival_final_bay_position : int
+      - arrival_bus_depart_passengers : int
+      - arrival_bus_status : char = ('a'(arrival) or 'd'(dept))
+    # interest statistics (in shared memory):
+      - total_passengers : int
+      - total_departed_passengers : int
+      - total_boarded_passengers : int
+      - average_bus_turnaround_time : double
+      - available_parking_places : int
+      - average_bus_park_time : double
+  * IPC helpers:
+    - bus_transaction_type : char('a' for arrival, 'd' for departure)
+    - bus_to_park_id : string(8)
+    - bus_to_park_category : string(3)
+    - bus_to_leave_id : string(8)
+    - bus_to_leave_waiting_time : double
+    - bus_count : int (all processes will terminate when it becomes 0)
+
+STRING_SIZES:
+  bus_plate_number(id) = 8
+  bus_category = 3

@@ -2,7 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "../headers/bus.h"
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/types.h>
+#include <semaphore.h>
 
 int main(int argc, char const *argv[])
 {
@@ -38,11 +41,11 @@ int main(int argc, char const *argv[])
       parkperiod = atoi(argv[i+1]);
     }
     // mantime
-    else if (!strcmp(argv[i+1],"-m")) {
+    else if (!strcmp(argv[i],"-m")) {
       parkperiod = atoi(argv[i+1]);
     }
     // shmid
-    else if (!strcmp(argv[i+1],"-s")) {
+    else if (!strcmp(argv[i],"-s")) {
       shmid = atoi(argv[i+1]);
     }
     // error
@@ -51,10 +54,23 @@ int main(int argc, char const *argv[])
       exit(0);
     }
   }
+
   // Attach shared memory segment
+  void *sm;
+  if ((sm = shmat(shmid,NULL,0)) == (void*)-1) {
+    perror("Error attaching shared memory segment to bus:");
+    exit(1);
+  }
+  // Get pointers to needed shared memory variables and semaphores
+  // Semaphores
+  sem_t* vehicle_transaction = (sem_t*)sm;
+
+  sleep(5);
+
+  sem_post(sm);
+
   // Start simulation
   printf("Started bus with pid:%d\n",getpid());
-  sleep(5);
   printf("Bus with pid %d stopped working.\n",getpid());
   return 0;
 }

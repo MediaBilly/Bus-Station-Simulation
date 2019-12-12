@@ -1,4 +1,0 @@
-#ifndef STATION_MANAGER_H
-#define STATION_MANAGER_H
-
-#endif

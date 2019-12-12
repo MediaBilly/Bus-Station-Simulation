@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "../headers/comptroller.h"
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
 int main(int argc, char const *argv[])
 {
@@ -33,10 +34,18 @@ int main(int argc, char const *argv[])
       exit(0);
     }
   }
+
   // Attach shared memory segment
+  void *sm;
+  if ((sm = shmat(shmid,NULL,0)) == (void*)-1) {
+    perror("Error attaching shared memory segment to comptroller:");
+    exit(1);
+  }
+  // Get pointers to needed shared memory variables and semaphores
+
   // Start simulation
   printf("Started comptroller with pid:%d\n",getpid());
-  sleep(5);
+  sleep(3);
   printf("Comptroller with pid %d stopped working.\n",getpid());
   return 0;
 }

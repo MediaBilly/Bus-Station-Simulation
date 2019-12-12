@@ -1,5 +1,5 @@
 CC = gcc
-FLAGS = -Wall
+FLAGS = -Wall -pthread
 TARGETS = mystation station-manager bus comptroller
 OBJS = mystation.o station-manager.o bus.o comptroller.o
 
