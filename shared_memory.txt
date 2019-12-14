@@ -10,21 +10,20 @@ SEMAPHORES:
 
 VARIABLES:
   * ledger specific:
-    # global status (in comptroller's memory, all those lines for each bus are kept in a dynamic structure and in the shared memory, only the last one is kept):
-      - arrival_time : double
-      - arrival_bus_plate_number(id) : string(8)
-      - arrival_bus_category : string(3)
-      - arrival_final_bay : int(1 = ASK,2 = PEL,3 = VOR)
-      - arrival_final_bay_position : int
-      - arrival_bus_depart_passengers : int
-      - arrival_bus_status : char = ('a'(arrival) or 'd'(dept))
-    # interest statistics (in shared memory):
+    # station status:
+      - bayCap[3] : int
+      - bayBuses[3] : int
+      - bus_departed_passengers[3] : int
+      - bus[total_cap = sum(bayCap[i])] : string(8)
+    # interest statistics:
       - total_passengers : int
       - total_departed_passengers : int
       - total_boarded_passengers : int
+      - total_in_station_buses : int
+      - total_completely_served_buses : int
       - average_bus_turnaround_time : double
-      - available_parking_places : int
       - average_bus_park_time : double
+      - average_bus_type_turnaround_time[3] : double
   * IPC helpers:
     - bus_transaction_type : char('a' for arrival, 'd' for departure)
     - bus_to_park_id : string(8)

@@ -8,15 +8,14 @@
 #include <sys/wait.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include "../headers/constants.h"
 
 // Shared memory total variables by type
 
 const int SM_TOTAL_SEMAPHORES = 8;
-const int SM_TOTAL_INTEGERS = 6;
+const int SM_TOTAL_INTEGERS = 7;
 const int SM_TOTAL_DOUBLES = 3;
-const int SM_STRING_BYTES = 30; // Extra bytes for the strings
-
-char *busTypes[3] = {"ASK","PEL","VOR"};
+const int SM_STRING_BYTES = 19; // Extra bytes for the strings
 
 int main(int argc, char const *argv[])
 {
@@ -53,12 +52,14 @@ int main(int argc, char const *argv[])
   }
   // Read capacity for each bay
   int bayCap[bays];
-  int i;
+  int i,totalCap = 0;
   for(i = 0;i < bays;i++) {
     if (fscanf(configfile,"%d",bayCap + i) != 1) {
       fprintf(stderr,"Configfile format error.\n");
       fclose(configfile);
       exit(0);
+    } else {
+      totalCap += bayCap[i];
     }
   }
   // Read bus capacity
@@ -95,7 +96,7 @@ int main(int argc, char const *argv[])
 
   // Create shared memory segment
   int shmid;
-  if ((shmid = shmget(IPC_PRIVATE,SM_TOTAL_SEMAPHORES*sizeof(sem_t) + SM_TOTAL_INTEGERS*sizeof(int) + SM_TOTAL_INTEGERS*sizeof(double) + SM_STRING_BYTES,0666)) == -1) {
+  if ((shmid = shmget(IPC_PRIVATE,SM_TOTAL_SEMAPHORES*sizeof(sem_t) + SM_TOTAL_INTEGERS*sizeof(int) + 3*BAYS * sizeof(int) + SM_TOTAL_DOUBLES*sizeof(double) + SM_STRING_BYTES + totalCap * BAY_NAME_SIZE,0666)) == -1) {
     perror("Error creating shared memory segment:");
     exit(1);
   }
@@ -156,6 +157,15 @@ int main(int argc, char const *argv[])
     exit(1);
   }
 
+  // Initialize other variables to 0
+  memset(sm + 8*sizeof(sem_t),0,SM_TOTAL_INTEGERS*sizeof(int) + 3*BAYS * sizeof(int) + SM_TOTAL_DOUBLES*sizeof(double) + SM_STRING_BYTES + totalCap * BAY_NAME_SIZE);
+
+  // Initialize bay caps in shared memory
+  int *sm_bayCap = (int*)(sm + 8*sizeof(sem_t));
+  for (i = 0;i < bays;i++) {
+    sm_bayCap[i] = bayCap[i];
+  }
+
   // Spawn the other processes
 
   // Spawn the station manager
@@ -185,7 +195,7 @@ int main(int argc, char const *argv[])
   else if (pid == 0) {
     char Shmid[10];
     sprintf(Shmid,"%d",shmid);
-    execl("./comptroller","comptroller","-d","10","-t","32","-s",Shmid,NULL);
+    execl("./comptroller","comptroller","-d","1","-t","2","-s",Shmid,NULL);
     perror("Comptroller execution error:");
     exit(1);
   }

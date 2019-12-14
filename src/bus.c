@@ -67,7 +67,7 @@ int main(int argc, char const *argv[])
 
   sleep(5);
 
-  sem_post(sm);
+  sem_post(vehicle_transaction);
 
   // Start simulation
   printf("Started bus with pid:%d\n",getpid());
