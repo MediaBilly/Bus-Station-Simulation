@@ -66,31 +66,35 @@ int main(int argc, char const *argv[])
   for (i = 0;i < BAYS;i++)
     totalCap += bayCap[i];
   int *busDepartedPassengers = (int*)(sm + 8*sizeof(sem_t) + 2*BAYS*sizeof(int));
-  char (*bus)[totalCap][BAY_NAME_SIZE] = (char*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int));
+  int *bus = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int));
 
   // Interest statistics variables
-  int *total_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char));
-  int *total_departed_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + sizeof(int));
-  int *total_boarded_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + 2*sizeof(int));
-  int *total_in_station_buses = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + 3*sizeof(int));
-  int *total_completely_served_buses = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + 4*sizeof(int));
-  double *average_bus_turnaround_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + 5*sizeof(int));
-  double *average_bus_park_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + 5*sizeof(int) + sizeof(double));
-  double *average_bus_type_turnaround_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*BAY_NAME_SIZE*sizeof(char) + 5*sizeof(int) + 2*sizeof(double));
+  int *total_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int));
+  int *total_departed_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + sizeof(int));
+  int *total_boarded_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 2*sizeof(int));
+  int *total_in_station_buses = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 3*sizeof(int));
+  int *total_completely_served_buses = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 4*sizeof(int));
+  double *average_bus_turnaround_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int));
+  double *average_bus_park_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int) + sizeof(double));
+  double *average_bus_type_turnaround_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int) + 2*sizeof(double));
+
+  // IPC helpers
+  int* bus_count = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 8*sizeof(int) + 6*sizeof(double) + sizeof(char));
 
   // Start simulation
   printf("Started comptroller with pid:%d\n",getpid());
   printf("Total cap is:%d\n",totalCap);
   clock_t start = clock();
   int seconds_elapsed = 0;
-  while (1) {
+  int done = 0;
+  while (!done) {
     // Time to print station staus
     if (seconds_elapsed % time == 0) {
       // Lock ledger mutex
       sem_wait(ledger_mutex);
 
       // Print stuff
-      printf("%d Station status:\n",seconds_elapsed);
+      printf("Station status:\n");
       int parked_buses=0,departed_passengers = 0;
       for (i = 0;i < BAYS;i++) {
         printf("\t-%s:\n",busTypes[i]);
@@ -114,7 +118,7 @@ int main(int argc, char const *argv[])
       sem_wait(ledger_mutex);
 
       // Print stuff
-      printf("%d Statistics:\n",seconds_elapsed);
+      printf("Statistics:\n");
       printf("\tTotal passengers served in station:%d\n",*total_passengers);
       printf("\tTotal passengers departed to station:%d\n",*total_departed_passengers);
       printf("\tTotal passengers boarded from the station:%d\n",*total_boarded_passengers);
@@ -134,6 +138,13 @@ int main(int argc, char const *argv[])
 
     sleep(1);
     seconds_elapsed++;
+
+    // Check if all buses finished their jobs. If so, exit
+    sem_wait(ledger_mutex);
+    printf("%d\n",*bus_count);
+    if (*bus_count == 0)
+      done = 1;
+    sem_post(ledger_mutex);
   }
   
   printf("Comptroller with pid %d stopped working.\n",getpid());

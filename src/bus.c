@@ -6,16 +6,19 @@
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <semaphore.h>
+#include "../headers/constants.h"
 
 int main(int argc, char const *argv[])
 {
   // Not enough arguments, so specify the correct usage and exit
-  if (argc != 13) {
-    printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -s shmid\n");
+  if (argc != 15) {
+    printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -l plate -s shmid\n");
     exit(0);
   }
+  // Get bus id(primary key)
+  int id = getpid();
   // Read the arguments
-  char type[3];
+  char type[4],plate[ID_PLATE_SIZE+1];
   int incpassengers,capacity,parkperiod,mantime,shmid;
   int i;
   for(i = 1;i < argc;i+=2) {
@@ -44,13 +47,17 @@ int main(int argc, char const *argv[])
     else if (!strcmp(argv[i],"-m")) {
       parkperiod = atoi(argv[i+1]);
     }
+    // id
+    else if (!strcmp(argv[i],"-l")) {
+      strcpy(plate,argv[i+1]);
+    }
     // shmid
     else if (!strcmp(argv[i],"-s")) {
       shmid = atoi(argv[i+1]);
     }
     // error
     else {
-      printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -s shmid\n");
+      printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -l plate -s shmid\n");
       exit(0);
     }
   }
@@ -61,16 +68,40 @@ int main(int argc, char const *argv[])
     perror("Error attaching shared memory segment to bus:");
     exit(1);
   }
+
   // Get pointers to needed shared memory variables and semaphores
+
   // Semaphores
   sem_t* vehicle_transaction = (sem_t*)sm;
+  sem_t *ledger_mutex = (sem_t*)(sm + 7*sizeof(sem_t));
 
-  sleep(5);
+  // ledger specific(only for offset calculations)
+  int *bayCap = (int*)(sm + 8*sizeof(sem_t));
+  int totalCap = 0;
+  for (i = 0;i < BAYS;i++)
+    totalCap += bayCap[i];
 
-  sem_post(vehicle_transaction);
+  // IPC helpers
+  int* bus_count = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 8*sizeof(int) + 6*sizeof(double) + sizeof(char));
+
+  // Increment shared memory bus count
+  sem_wait(ledger_mutex);
+  (*bus_count)++;
+  sem_post(ledger_mutex);
 
   // Start simulation
-  printf("Started bus with pid:%d\n",getpid());
-  printf("Bus with pid %d stopped working.\n",getpid());
+  printf("Bus %d %s (%s) is on the road\n",id,plate,type);
+
+  sleep(rand() % 20);
+
+  // sem_post(vehicle_transaction);
+
+  // End of simulation
+
+  // Decrement shared memory bus count
+  sem_wait(ledger_mutex);
+  (*bus_count)--;
+  sem_post(ledger_mutex);
+  printf("Bus %s (%s) finished it's job.\n",plate,type);
   return 0;
 }

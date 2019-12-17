@@ -14,7 +14,7 @@ VARIABLES:
       - bayCap[3] : int
       - bayBuses[3] : int
       - bus_departed_passengers[3] : int
-      - bus[total_cap = sum(bayCap[i])] : string(8)
+      - bus[total_cap = sum(bayCap[i])] : int
     # interest statistics:
       - total_passengers : int
       - total_departed_passengers : int
@@ -26,9 +26,9 @@ VARIABLES:
       - average_bus_type_turnaround_time[3] : double
   * IPC helpers:
     - bus_transaction_type : char('a' for arrival, 'd' for departure)
-    - bus_to_park_id : string(8)
-    - bus_to_park_category : string(3)
-    - bus_to_leave_id : string(8)
+    - bus_to_park_id : int
+    - bus_to_park_category : int(0 = ASK,1 = PEL,2 = VOR)
+    - bus_to_leave_id : int
     - bus_to_leave_waiting_time : double
     - bus_count : int (all processes will terminate when it becomes 0)
 

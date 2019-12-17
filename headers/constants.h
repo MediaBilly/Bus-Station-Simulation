@@ -1,4 +1,5 @@
 #define BAYS 3
 #define BAY_NAME_SIZE 3
+#define ID_PLATE_SIZE 8
 
-char *busTypes[3] = {"ASK","PEL","VOR"};
+char *busTypes[BAYS] = {"ASK","PEL","VOR"};

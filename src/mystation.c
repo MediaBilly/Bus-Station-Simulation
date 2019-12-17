@@ -15,7 +15,7 @@
 const int SM_TOTAL_SEMAPHORES = 8;
 const int SM_TOTAL_INTEGERS = 7;
 const int SM_TOTAL_DOUBLES = 3;
-const int SM_STRING_BYTES = 19; // Extra bytes for the strings
+const int SM_STRING_BYTES = 22; // Extra bytes for the strings
 
 int main(int argc, char const *argv[])
 {
@@ -217,7 +217,19 @@ int main(int argc, char const *argv[])
       sprintf(parkperiod,"%d",maxParkPeriod);
       sprintf(mantime,"%d",rand() % maxManTime);
       sprintf(Shmid,"%d",shmid);
-      execl("./bus","bus","-t",busTypes[typeIndex],"-n",incpassengers,"-c",capacity,"-p",parkperiod,"-m",mantime,"-s",Shmid,NULL);
+      // Create id(plate number)
+      char plate[ID_PLATE_SIZE + 1];
+      for (i = 0;i <= 2;i++) {
+        char letter = rand() % ('Z' - 'A') + 'A';
+        plate[i] = letter;
+      }
+      plate[3] = '-';
+      for (i = 4;i < ID_PLATE_SIZE;i++) {
+        char numb = rand() % ('9' - '0') + '0';
+        plate[i]= numb;
+      }
+      plate[ID_PLATE_SIZE] = '\0';
+      execl("./bus","bus","-t",busTypes[typeIndex],"-n",incpassengers,"-c",capacity,"-p",parkperiod,"-m",mantime,"-s",Shmid,"-l",plate,NULL);
       perror("Bus execution error:");
       exit(1);
     }
