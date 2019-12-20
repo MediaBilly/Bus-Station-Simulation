@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <semaphore.h>
 #include "../headers/constants.h"
+#include "../headers/shared_segment.h"
 
 int main(int argc, char const *argv[])
 {
@@ -27,52 +28,70 @@ int main(int argc, char const *argv[])
   }
 
   // Attach shared memory segment
-  void *sm;
+  Shared_segment *sm;
   if ((sm = shmat(shmid,NULL,0)) == (void*)-1) {
     perror("Error attaching shared memory segment to station-manager:");
     exit(1);
   }
-  // Get pointers to needed shared memory variables and semaphores
-  // Semaphores
-  sem_t* vehicle_transaction = (sem_t*)sm;
-
-  // Station status variables
-  int *bayCap = (int*)(sm + 8*sizeof(sem_t));
-  int *bayBuses = (int*)(sm + 8*sizeof(sem_t) + BAYS*sizeof(int));
-  int totalCap = 0;
-  int i;
-  for (i = 0;i < BAYS;i++)
-    totalCap += bayCap[i];
-  int *busDepartedPassengers = (int*)(sm + 8*sizeof(sem_t) + 2*BAYS*sizeof(int));
-  int *bus = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int));
-
-  // Interest statistics variables
-  int *total_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int));
-  int *total_departed_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + sizeof(int));
-  int *total_boarded_passengers = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 2*sizeof(int));
-  int *total_in_station_buses = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 3*sizeof(int));
-  int *total_completely_served_buses = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 4*sizeof(int));
-  double *average_bus_turnaround_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int));
-  double *average_bus_park_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int) + sizeof(double));
-  double *average_bus_type_turnaround_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int) + 2*sizeof(double));
-
-  // IPC 
-  char* bus_transaction_type = (char*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int) + 5*sizeof(double));
-  int* bus_to_park_id = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 5*sizeof(int) + 5*sizeof(double) + sizeof(char));
-  int* bus_to_park_category = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 6*sizeof(int) + 5*sizeof(double) + sizeof(char));
-  int* bus_to_leave_id = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 7*sizeof(int) + 5*sizeof(double) + sizeof(char));
-  double* bus_to_leave_waiting_time = (double*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 8*sizeof(int) + 5*sizeof(double) + sizeof(char));
-  int* bus_count = (int*)(sm + 8*sizeof(sem_t) + 3*BAYS * sizeof(int) + totalCap*sizeof(int) + 8*sizeof(int) + 6*sizeof(double) + sizeof(char));
 
   // Start simulation
   printf("Started station-manager with pid:%d\n",getpid());
 
-  /*
-  printf("Station-manager waiting for bus transaction...\n");
-  sem_wait(vehicle_transaction);
-  
-  printf("Station-manager received bus signal.\n");
-  */
+  int done = 0;
+  while (1) {
+    // Wait for request from incoming or outcoming bus
+    printf("Station-manager waiting for bus transaction...\n");
+    sem_wait(&(sm->vehicle_transaction));
+    
+    // Check if all buses finished their jobs. If so, exit
+    sem_wait(&(sm->ledger_mutex));
+    if (sm->bus_count == 0)
+      done = 1;
+    sem_post(&(sm->ledger_mutex));
+    if (done)
+      break;
+    printf("Station-manager received bus signal.\n");
+
+    // Depending on the transaction type wait for notification from the bus
+    char transaction_type;
+    int bus_id;
+    int bus_type;
+    char bus_plate[BUS_PLATE_SIZE+1];
+    sem_wait(&(sm->IPC_mutex));
+    transaction_type = sm->bus_transaction_type;
+    switch (transaction_type)
+    {
+      case INBOUND_VEHICLE:
+        bus_id = sm->inbound_bus_id;
+        bus_type = sm->inbound_bus_type;
+        strcpy(bus_plate,sm->inbound_bus_plate);
+        break;
+      case OUTBOUND_VEHICLE:
+        bus_id = sm->outbound_bus_id;
+        break;
+      default:
+        break;
+    }
+    sem_post(&(sm->IPC_mutex));
+
+    switch (transaction_type)
+    {
+      case INBOUND_VEHICLE:
+        // TODO: if there is enough parking space do the following. (if not enough parking space, continue;)
+        // For the moment, infinite parking places exist
+        printf("Station manager: Bus of type %s with id %d and plate number %s just arrived at the staion.\n",busTypes[bus_type],bus_id,bus_plate);
+        // Notify bus to park
+        sem_post(&(sm->station_manager_inbound_notification));
+        break;
+      case OUTBOUND_VEHICLE:
+        printf("Station manager: Bus with id %d just left the staion.\n",bus_id);
+        // Notify bus to park
+        sem_post(&(sm->station_manager_outbound_notification));
+        break;
+      default:
+        break;
+    }
+  }
 
   printf("Station-manager with pid %d stopped working.\n",getpid());
   return 0;

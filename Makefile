@@ -5,8 +5,8 @@ OBJS = mystation.o station-manager.o bus.o comptroller.o
 
 all: $(TARGETS)
 
-mystation:mystation.o
-	$(CC) $(FLAGS) -o mystation mystation.o
+mystation:mystation.o 
+	$(CC) $(FLAGS) -o mystation mystation.o 
 
 station-manager:station-manager.o
 	$(CC) $(FLAGS) -o station-manager station-manager.o

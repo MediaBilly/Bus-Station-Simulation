@@ -9,13 +9,7 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include "../headers/constants.h"
-
-// Shared memory total variables by type
-
-const int SM_TOTAL_SEMAPHORES = 8;
-const int SM_TOTAL_INTEGERS = 7;
-const int SM_TOTAL_DOUBLES = 3;
-const int SM_STRING_BYTES = 22; // Extra bytes for the strings
+#include "../headers/shared_segment.h"
 
 int main(int argc, char const *argv[])
 {
@@ -96,74 +90,79 @@ int main(int argc, char const *argv[])
 
   // Create shared memory segment
   int shmid;
-  if ((shmid = shmget(IPC_PRIVATE,SM_TOTAL_SEMAPHORES*sizeof(sem_t) + SM_TOTAL_INTEGERS*sizeof(int) + 3*BAYS * sizeof(int) + SM_TOTAL_DOUBLES*sizeof(double) + SM_STRING_BYTES + totalCap * BAY_NAME_SIZE,0666)) == -1) {
+  if ((shmid = shmget(IPC_PRIVATE,sizeof(Shared_segment),0666)) == -1) {
     perror("Error creating shared memory segment:");
     exit(1);
   }
   // Attach shared memory segment
-  void *sm;
+  Shared_segment *sm;
   if ((sm = shmat(shmid,NULL,0)) == (void*)-1) {
     perror("Error attaching shared memory segment to mystation:");
     exit(1);
   }
 
+  // Initialize all shared memory bytes to 0
+  //Shared_Segment_Init(sm);
+
   // Create the semaphores
 
   // Create vehicle_transaction semaphore
-  if (sem_init(sm,1,0) != 0) {
+  if (sem_init(&(sm->vehicle_transaction),1,0) != 0) {
     perror("Could not initialize vehicle_transaction semaphore:");
     exit(1);
-  }
+  } 
 
   // Create inbound_vehicle semaphore
-  if (sem_init(sm + sizeof(sem_t),1,1) != 0) {
+  if (sem_init(&(sm->inbound_vehicle),1,1) != 0) {
     perror("Could not initialize inbound_vehicle semaphore:");
     exit(1);
   }
 
   // Create outbound_vehicle semaphore
-  if (sem_init(sm + 2*sizeof(sem_t),1,1) != 0) {
+  if (sem_init(&(sm->outbound_vehicle),1,1) != 0) {
     perror("Could not initialize outbound_vehicle semaphore:");
     exit(1);
   }
 
   // Create station_manager_inbound_notification semaphore
-  if (sem_init(sm + 3*sizeof(sem_t),1,0) != 0) {
+  if (sem_init(&(sm->station_manager_inbound_notification),1,0) != 0) {
     perror("Could not initialize station_manager_inbound_notification semaphore:");
     exit(1);
   }
 
   // Create station_manager_outbound_notification semaphore
-  if (sem_init(sm + 4*sizeof(sem_t),1,0) != 0) {
+  if (sem_init(&(sm->station_manager_outbound_notification),1,0) != 0) {
     perror("Could not initialize station_manager_outbound_notification semaphore:");
     exit(1);
   }
 
   // Create ledger_read semaphore
-  if (sem_init(sm + 5*sizeof(sem_t),1,1) != 0) {
+  if (sem_init(&(sm->ledger_read),1,1) != 0) {
     perror("Could not initialize ledger_read semaphore:");
     exit(1);
   }
 
   // Create ledger_write semaphore
-  if (sem_init(sm + 6*sizeof(sem_t),1,1) != 0) {
+  if (sem_init(&(sm->ledger_write),1,1) != 0) {
     perror("Could not initialize ledger_write semaphore:");
     exit(1);
   }
 
   // Create ledger_mutex semaphore
-  if (sem_init(sm + 7*sizeof(sem_t),1,1) != 0) {
+  if (sem_init(&(sm->ledger_mutex),1,1) != 0) {
     perror("Could not initialize ledger_mutex semaphore:");
     exit(1);
   }
 
-  // Initialize other variables to 0
-  memset(sm + 8*sizeof(sem_t),0,SM_TOTAL_INTEGERS*sizeof(int) + 3*BAYS * sizeof(int) + SM_TOTAL_DOUBLES*sizeof(double) + SM_STRING_BYTES + totalCap * BAY_NAME_SIZE);
+  // Create IPC_mutex semaphore
+  if (sem_init(&(sm->IPC_mutex),1,1) != 0) {
+    perror("Could not initialize IPC_mutex semaphore:");
+    exit(1);
+  }
 
   // Initialize bay caps in shared memory
-  int *sm_bayCap = (int*)(sm + 8*sizeof(sem_t));
   for (i = 0;i < bays;i++) {
-    sm_bayCap[i] = bayCap[i];
+    sm->bayCap[i] = bayCap[i];
   }
 
   // Spawn the other processes
@@ -195,7 +194,7 @@ int main(int argc, char const *argv[])
   else if (pid == 0) {
     char Shmid[10];
     sprintf(Shmid,"%d",shmid);
-    execl("./comptroller","comptroller","-d","1","-t","2","-s",Shmid,NULL);
+    execl("./comptroller","comptroller","-d","100","-t","200","-s",Shmid,NULL);
     perror("Comptroller execution error:");
     exit(1);
   }
@@ -218,17 +217,17 @@ int main(int argc, char const *argv[])
       sprintf(mantime,"%d",rand() % maxManTime);
       sprintf(Shmid,"%d",shmid);
       // Create id(plate number)
-      char plate[ID_PLATE_SIZE + 1];
+      char plate[BUS_PLATE_SIZE + 1];
       for (i = 0;i <= 2;i++) {
         char letter = rand() % ('Z' - 'A') + 'A';
         plate[i] = letter;
       }
       plate[3] = '-';
-      for (i = 4;i < ID_PLATE_SIZE;i++) {
+      for (i = 4;i < BUS_PLATE_SIZE;i++) {
         char numb = rand() % ('9' - '0') + '0';
         plate[i]= numb;
       }
-      plate[ID_PLATE_SIZE] = '\0';
+      plate[BUS_PLATE_SIZE] = '\0';
       execl("./bus","bus","-t",busTypes[typeIndex],"-n",incpassengers,"-c",capacity,"-p",parkperiod,"-m",mantime,"-s",Shmid,"-l",plate,NULL);
       perror("Bus execution error:");
       exit(1);
@@ -245,8 +244,8 @@ int main(int argc, char const *argv[])
   }
 
   // Destroy all the semaphores
-  for(i = 0;i < SM_TOTAL_SEMAPHORES;i++) {
-    sem_destroy(sm + i*sizeof(sem_t));
+  for(i = 0;i < TOTAL_SEMAPHORES;i++) {
+    sem_destroy((void*)sm + i*sizeof(sem_t));
   }
   
   // Remove shared memory segment

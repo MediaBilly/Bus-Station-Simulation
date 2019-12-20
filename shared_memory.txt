@@ -7,6 +7,7 @@ SEMAPHORES:
   - ledger_read = 1
   - ledger_write = 1
   - ledger_mutex = 1
+  - IPC_mutex = 1
 
 VARIABLES:
   * ledger specific:
@@ -26,10 +27,11 @@ VARIABLES:
       - average_bus_type_turnaround_time[3] : double
   * IPC helpers:
     - bus_transaction_type : char('a' for arrival, 'd' for departure)
-    - bus_to_park_id : int
-    - bus_to_park_category : int(0 = ASK,1 = PEL,2 = VOR)
-    - bus_to_leave_id : int
-    - bus_to_leave_waiting_time : double
+    - inbound_bus_id : int
+    - inbound_bus_plate : string([BUS_PLATE_SIZE+1]);
+    - inbound_bus_category : int(0 = ASK,1 = PEL,2 = VOR)
+    - outbound_bus_id : int
+    - outbound_bus_waiting_time : double
     - bus_count : int (all processes will terminate when it becomes 0)
 
 STRING_SIZES:
