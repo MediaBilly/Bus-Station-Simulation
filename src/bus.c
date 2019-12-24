@@ -12,17 +12,16 @@
 
 int main(int argc, char const *argv[])
 {
-  srand(time(NULL));
   // Not enough arguments, so specify the correct usage and exit
-  if (argc != 15) {
-    printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -l plate -s shmid\n");
+  if (argc != 17) {
+    printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -l plate -s shmid -w wating time\n");
     exit(0);
   }
   // Get bus id(primary key)
   int id = getpid();
   // Read the arguments
   char type[4],plate[BUS_PLATE_SIZE+1];
-  int incpassengers,capacity,parkperiod,mantime,shmid,typeid;
+  int incpassengers,capacity,parkperiod,mantime,shmid,typeid,waitingtime;
   int i;
   for(i = 1;i < argc;i+=2) {
     // type
@@ -64,9 +63,13 @@ int main(int argc, char const *argv[])
     else if (!strcmp(argv[i],"-s")) {
       shmid = atoi(argv[i+1]);
     }
+    // waiting time
+    else if (!strcmp(argv[i],"-w")) {
+      waitingtime = atoi(argv[i+1]);
+    }
     // error
     else {
-      printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -l plate -s shmid\n");
+      printf("Usage: ./bus -t type -n incpassengers -c capacity -p parkperiod -m mantime -l plate -s shmid -w waiting time\n");
       exit(0);
     }
   }
@@ -85,9 +88,19 @@ int main(int argc, char const *argv[])
 
   // Start simulation
 
+  // Wait some seconds before getting on the road to make simulation more realistic
+  sleep(waitingtime);
+
+  // Seed the rand after waiting to avoid confusions(same random numbers with other buses due to same seed)
+  srand(time(NULL));
+
   // Bus gets on the road after a certain time 
-  sleep(rand() % 20);
+  sem_wait(&(sm->output));
   printf("Bus %d %s (%s) is on the road\n",id,plate,type);
+  sem_post(&(sm->output));
+
+  // Wait for station manager availability
+  sem_wait(&(sm->station_manager));
 
   // Wait for station manager inbound vehicle availability
   sem_wait(&(sm->inbound_vehicle));
@@ -109,11 +122,15 @@ int main(int argc, char const *argv[])
   sem_wait(&(sm->station_manager_inbound_notification));
 
   // Start parking process (waits for mantime seconds)
+  sem_wait(&(sm->output));
   printf("Bus %s (%s) starts parking process.\n",plate,type);
+  sem_post(&(sm->output));
   sleep(mantime);
 
   // Arrive at the indicated bay and land passengers
+  sem_wait(&(sm->output));
   printf("Bus %s (%s) just parked.%d passengers landed\n",plate,type,incpassengers);
+  sem_post(&(sm->output));
 
   // Update ledger for arrivals
   sem_wait(&(sm->ledger_mutex));
@@ -132,12 +149,17 @@ int main(int argc, char const *argv[])
 
   // Board passengers
   int boardedPassengers = rand() % (capacity + 1);
+  sem_wait(&(sm->output));
   printf("Bus %s (%s) boarded %d passengers...\n",plate,type,boardedPassengers);
+  sem_post(&(sm->output));
 
   // Update ledger for boarded passengers
   sem_wait(&(sm->ledger_mutex));
   sm->total_boarded_passengers += boardedPassengers;
   sem_post(&(sm->ledger_mutex));
+
+  // Wait for station manager availability
+  sem_wait(&(sm->station_manager));
 
   // Wait for station manager outbound vehicle availability
   sem_wait(&(sm->outbound_vehicle));
@@ -155,7 +177,9 @@ int main(int argc, char const *argv[])
   sem_wait(&(sm->station_manager_outbound_notification));
 
   // Start departure process (waits for mantime seconds)
+  sem_wait(&(sm->output));
   printf("Bus %s (%s) departed.\n",plate,type);
+  sem_post(&(sm->output));
   sleep(mantime);
 
   // Update ledger
@@ -169,13 +193,24 @@ int main(int argc, char const *argv[])
 
   // End of simulation
 
-  // Decrement shared memory bus count
+  // Decrement shared memory bus count, calculate new average times and increase total_completely_served_buses
   sem_wait(&(sm->ledger_mutex));
   sm->bus_count--;
-  // If it was the last bus, notify the station manager to check the bus_count and stop execution
-  if (sm->bus_count == 0)
-    sem_post(&(sm->vehicle_transaction));
+  sm->average_bus_turnaround_time *= sm->total_completely_served_buses;
+  sm->average_bus_turnaround_time += 2*mantime + parkperiod;
+  sm->average_bus_park_time *= sm->total_completely_served_buses;
+  sm->average_bus_park_time += parkperiod;
+  sm->average_bus_type_turnaround_time[typeid] *= sm->completely_served_buses_per_type[typeid];
+  sm->average_bus_type_turnaround_time[typeid] += 2*mantime + parkperiod;
+  sm->total_completely_served_buses++;
+  sm->completely_served_buses_per_type[typeid]++;
+  sm->average_bus_turnaround_time /= sm->total_completely_served_buses;
+  sm->average_bus_park_time /= sm->total_completely_served_buses;
+  sm->average_bus_type_turnaround_time[typeid] /= sm->completely_served_buses_per_type[typeid];
   sem_post(&(sm->ledger_mutex));
+
+  sem_wait(&(sm->output));
   printf("Bus %s (%s) finished it's job.\n",plate,type);
+  sem_post(&(sm->output));
   return 0;
 }

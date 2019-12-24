@@ -6,17 +6,30 @@
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <semaphore.h>
+#include <signal.h>
 #include "../headers/constants.h"
 #include "../headers/shared_segment.h"
 
+// Handles done signal
+int done = 0;
+sem_t *transactionSemaphore;
+void signal_handler(int signum) {
+    if (signum == SIGUSR2) {
+      sem_post(transactionSemaphore);
+      done = 1;
+    }
+}
+
 int main(int argc, char const *argv[])
 {
+  // Register stop signal
+  signal(SIGUSR2,signal_handler);
   // Not enough arguments, so specify the correct usage and exit
   if (argc != 3) {
     fprintf(stderr,"Usage: ./station-manager -s shmid\n");
     exit(0);
   }
-  // Read arguments
+  // Read the arguments
   int shmid;
   // Error
   if (strcmp(argv[1],"-s")) {
@@ -34,23 +47,27 @@ int main(int argc, char const *argv[])
     exit(1);
   }
 
-  // Start simulation
-  printf("Started station-manager with pid:%d\n",getpid());
+  transactionSemaphore = &(sm->vehicle_transaction);
 
-  int done = 0;
+  // Start simulation
+  sem_wait(&(sm->output));
+  printf("Started station-manager with pid:%d\n",getpid());
+  sem_post(&(sm->output));
+
   while (1) {
     // Wait for request from incoming or outcoming bus
+    sem_wait(&(sm->output));
     printf("Station-manager waiting for bus transaction...\n");
+    sem_post(&(sm->output));
+
     sem_wait(&(sm->vehicle_transaction));
-    
-    // Check if all buses finished their jobs. If so, exit
-    sem_wait(&(sm->ledger_mutex));
-    if (sm->bus_count == 0)
-      done = 1;
-    sem_post(&(sm->ledger_mutex));
-    if (done)
+    // Check if we received done signal
+    if (done) 
       break;
+
+    sem_wait(&(sm->output));
     printf("Station-manager received bus signal.\n");
+    sem_post(&(sm->output));
 
     // Depending on the transaction type wait for notification from the bus
     char transaction_type;
@@ -79,20 +96,28 @@ int main(int argc, char const *argv[])
       case INBOUND_VEHICLE:
         // TODO: if there is enough parking space do the following. (if not enough parking space, continue;)
         // For the moment, infinite parking places exist
-        printf("Station manager: Bus of type %s with id %d and plate number %s just arrived at the staion.\n",busTypes[bus_type],bus_id,bus_plate);
+        sem_wait(&(sm->output));
+        printf("Station manager: Bus of type %s with id %d and plate number %s just arrived at the station.\n",busTypes[bus_type],bus_id,bus_plate);
+        sem_post(&(sm->output));
         // Notify bus to park
         sem_post(&(sm->station_manager_inbound_notification));
         break;
       case OUTBOUND_VEHICLE:
+        sem_wait(&(sm->output));
         printf("Station manager: Bus with id %d just left the staion.\n",bus_id);
+        sem_post(&(sm->output));
         // Notify bus to park
         sem_post(&(sm->station_manager_outbound_notification));
         break;
       default:
         break;
     }
+    // Make station manager available
+    sem_post(&(sm->station_manager));
   }
-
+  
+  sem_wait(&(sm->output));
   printf("Station-manager with pid %d stopped working.\n",getpid());
+  sem_post(&(sm->output));
   return 0;
 }

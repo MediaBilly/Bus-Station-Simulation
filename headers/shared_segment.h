@@ -4,12 +4,12 @@
 #include <semaphore.h>
 #include "../headers/constants.h"
 
-#define TOTAL_SEMAPHORES 9
+#define TOTAL_SEMAPHORES 11
 
 typedef struct shared_segment
 {
   // Semaphores
-  //sem_t station_manager;
+  sem_t station_manager;
   sem_t vehicle_transaction;
   sem_t inbound_vehicle;
   sem_t outbound_vehicle;
@@ -19,6 +19,7 @@ typedef struct shared_segment
   sem_t ledger_write;
   sem_t ledger_mutex;
   sem_t IPC_mutex;
+  sem_t output;
 
   // Station_status_variables
   int bayCap[3];
@@ -34,6 +35,7 @@ typedef struct shared_segment
   double average_bus_turnaround_time;
   double average_bus_park_time;
   double average_bus_type_turnaround_time[3];
+  int completely_served_buses_per_type[3];
 
   // IPC Helpers
   char bus_transaction_type;
@@ -44,7 +46,5 @@ typedef struct shared_segment
   double outbound_bus_waiting_time;
   int bus_count;
 } Shared_segment;
-
-//void Shared_Segment_Init(Shared_segment*);
 
 #endif

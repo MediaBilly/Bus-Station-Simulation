@@ -8,6 +8,7 @@ SEMAPHORES:
   - ledger_write = 1
   - ledger_mutex = 1
   - IPC_mutex = 1
+  - output = 1
 
 VARIABLES:
   * ledger specific:

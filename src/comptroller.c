@@ -6,11 +6,22 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <semaphore.h>
+#include <signal.h>
 #include "../headers/constants.h"
 #include "../headers/shared_segment.h"
 
+// Handles done signal
+int done = 0;
+void signal_handler(int signum) {
+    if (signum == SIGUSR2) {
+      done = 1;
+    }
+}
+
 int main(int argc, char const *argv[])
 {
+  // Register stop signal
+  signal(SIGUSR2,signal_handler);
   // Not enough arguments, so specify the correct usage and exit
   if (argc != 7) {
     fprintf(stderr,"Usage: ./comptroller -d time -t stattimes -s shmid\n");
@@ -60,10 +71,11 @@ int main(int argc, char const *argv[])
     totalCap += sm->bayCap[i];
 
   // Start simulation
+  sem_wait(&(sm->output));
   printf("Started comptroller with pid:%d\n",getpid());
   printf("Total cap is:%d\n",totalCap);
+  sem_post(&(sm->output));
   int seconds_elapsed = 0;
-  int done = 0;
   while (!done) {
     // Time to print station staus
     if (seconds_elapsed % time == 0) {
@@ -71,6 +83,7 @@ int main(int argc, char const *argv[])
       sem_wait(&(sm->ledger_mutex));
 
       // Print stuff
+      sem_wait(&(sm->output));
       printf("Station status:\n");
       int parked_buses=0,landed_passengers = 0;
       for (i = 0;i < BAYS;i++) {
@@ -84,6 +97,7 @@ int main(int argc, char const *argv[])
       printf("\t Total parked buses:%d\n",parked_buses);
       printf("\t Total landed passengers:%d\n",landed_passengers);
       printf("\n");
+      sem_post(&(sm->output));
 
       // Unlock ledger mutex
       sem_post(&(sm->ledger_mutex));
@@ -94,6 +108,7 @@ int main(int argc, char const *argv[])
       // Lock ledger mutex
       sem_wait(&(sm->ledger_mutex));
 
+      sem_wait(&(sm->output));
       // Print stuff
       printf("Statistics:\n");
       printf("\tTotal passengers served in station:%d\n",sm->total_passengers);
@@ -108,6 +123,7 @@ int main(int argc, char const *argv[])
         printf("\t\t- %s:%lf\n",busTypes[i],sm->average_bus_type_turnaround_time[i]);
       }
       printf("\n");
+      sem_post(&(sm->output));
 
       // Unlock ledger mutex
       sem_post(&(sm->ledger_mutex));
@@ -115,16 +131,10 @@ int main(int argc, char const *argv[])
 
     sleep(1);
     seconds_elapsed++;
-
-    // Check if all buses finished their jobs. If so, exit
-    sem_wait(&(sm->ledger_mutex));
-    //printf("%d\n",sm->bus_count);
-    if (sm->bus_count == 0)
-      done = 1;
-    sem_post(&(sm->ledger_mutex));
   }
   
+  sem_wait(&(sm->output));
   printf("Comptroller with pid %d stopped working.\n",getpid());
-  //sem_post(&(sm->vehicle_transaction));
+  sem_post(&(sm->output));
   return 0;
 }

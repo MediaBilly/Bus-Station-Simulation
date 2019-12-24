@@ -1,5 +1,6 @@
 {
   "files.associations": {
-    "shared_segment.h": "c"
+    "shared_segment.h": "c",
+    "time.h": "c"
   }
 }

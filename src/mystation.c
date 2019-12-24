@@ -7,6 +7,7 @@
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <semaphore.h>
+#include <signal.h>
 #include <unistd.h>
 #include "../headers/constants.h"
 #include "../headers/shared_segment.h"
@@ -84,6 +85,20 @@ int main(int argc, char const *argv[])
     fclose(configfile);
     exit(0);
   }
+  // Read comptroller's time
+  int comptroller_time;
+  if (fscanf(configfile,"%d",&comptroller_time) != 1) {
+    fprintf(stderr,"Configfile format error.\n");
+    fclose(configfile);
+    exit(0);
+  }
+  // Read comptroller's stattimes
+  int comptroller_stattimes;
+  if (fscanf(configfile,"%d",&comptroller_stattimes) != 1) {
+    fprintf(stderr,"Configfile format error.\n");
+    fclose(configfile);
+    exit(0);
+  }
 
   // Close configuration file
   fclose(configfile);
@@ -101,10 +116,13 @@ int main(int argc, char const *argv[])
     exit(1);
   }
 
-  // Initialize all shared memory bytes to 0
-  //Shared_Segment_Init(sm);
-
   // Create the semaphores
+
+  // Create station_manager semaphore
+  if (sem_init(&(sm->station_manager),1,1) != 0) {
+    perror("Could not initialize station_manager semaphore:");
+    exit(1);
+  } 
 
   // Create vehicle_transaction semaphore
   if (sem_init(&(sm->vehicle_transaction),1,0) != 0) {
@@ -160,6 +178,12 @@ int main(int argc, char const *argv[])
     exit(1);
   }
 
+  // Create output semaphore
+  if (sem_init(&(sm->output),1,1) != 0) {
+    perror("Could not initialize output semaphore:");
+    exit(1);
+  }
+
   // Initialize bay caps in shared memory
   for (i = 0;i < bays;i++) {
     sm->bayCap[i] = bayCap[i];
@@ -168,6 +192,7 @@ int main(int argc, char const *argv[])
   // Spawn the other processes
 
   // Spawn the station manager
+  pid_t station_manager;
   pid_t pid;
   // Error
   if ((pid = fork()) == -1) {
@@ -181,10 +206,13 @@ int main(int argc, char const *argv[])
     execl("./station-manager","station-manager","-s",Shmid,NULL);
     perror("Station-manager execution error:");
     exit(1);
+  } else {
+    station_manager = pid;
   }
   // Parent continues spawning the other processes
 
-  // Spawn the comtroller
+  // Spawn the comptroller
+  pid_t comptroller;
   // Error
   if ((pid = fork()) == -1) {
     perror("Comptroller creation error:");
@@ -193,13 +221,20 @@ int main(int argc, char const *argv[])
   // Child(comptroller)
   else if (pid == 0) {
     char Shmid[10];
+    char time[10];
+    char stattimes[10];
     sprintf(Shmid,"%d",shmid);
-    execl("./comptroller","comptroller","-d","100","-t","200","-s",Shmid,NULL);
+    sprintf(time,"%d",comptroller_time);
+    sprintf(stattimes,"%d",comptroller_stattimes);
+    execl("./comptroller","comptroller","-d",time,"-t",stattimes,"-s",Shmid,NULL);
     perror("Comptroller execution error:");
     exit(1);
+  } else {
+    comptroller = pid;
   }
   // Parent continues spawning the other processes
   
+  pid_t busPid[totalVehicles];
   // Spawn the buses
   for(i = 0;i < totalVehicles;i++) {
     int typeIndex = rand() % bays;
@@ -210,12 +245,13 @@ int main(int argc, char const *argv[])
     }
     // Child(bus)
     else if (pid == 0) {
-      char incpassengers[10],capacity[10],parkperiod[10],mantime[10],Shmid[10];
+      char incpassengers[10],capacity[10],parkperiod[10],mantime[10],Shmid[10],waitingtime[10];
       sprintf(incpassengers,"%d",rand() % busCap);
       sprintf(capacity,"%d",busCap);
-      sprintf(parkperiod,"%d",maxParkPeriod);
+      sprintf(parkperiod,"%d",rand() % maxParkPeriod);
       sprintf(mantime,"%d",rand() % maxManTime);
       sprintf(Shmid,"%d",shmid);
+      sprintf(waitingtime,"%d",rand() % 10);
       // Create id(plate number)
       char plate[BUS_PLATE_SIZE + 1];
       for (i = 0;i <= 2;i++) {
@@ -228,20 +264,31 @@ int main(int argc, char const *argv[])
         plate[i]= numb;
       }
       plate[BUS_PLATE_SIZE] = '\0';
-      execl("./bus","bus","-t",busTypes[typeIndex],"-n",incpassengers,"-c",capacity,"-p",parkperiod,"-m",mantime,"-s",Shmid,"-l",plate,NULL);
+      execl("./bus","bus","-t",busTypes[typeIndex],"-n",incpassengers,"-c",capacity,"-p",parkperiod,"-m",mantime,"-s",Shmid,"-l",plate,"-w",waitingtime,NULL);
       perror("Bus execution error:");
       exit(1);
+    } else {
+      busPid[i] = pid;
     }
   }
 
-  // Wait for the processes to finish execution
-  for(i = 0;i < totalVehicles + 2;i++) {
-    int exit_status;
-    if (wait(&exit_status) == -1) {
-      perror("Wait failed");
-      exit(1);
-    }
+  int exit_status;
+  // Wait for the buses to finish execution
+  for(i = 0;i < totalVehicles;i++) {
+    while (waitpid(busPid[i],&exit_status,0) == 0) ;
   }
+
+  // Tell the comptroller to stop execution
+  kill(comptroller,SIGUSR2);
+
+  // Wait for him to finish execution
+  while (waitpid(comptroller,&exit_status,0) == 0) ;
+
+  // Tell the station_manager to stop execution
+  kill(station_manager,SIGUSR2);
+
+  // Wait for him to completely finish
+  while (waitpid(station_manager,&exit_status,0) == 0) ;
 
   // Destroy all the semaphores
   for(i = 0;i < TOTAL_SEMAPHORES;i++) {
